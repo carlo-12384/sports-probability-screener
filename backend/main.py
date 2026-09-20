@@ -16,21 +16,14 @@ FILE = "output/nfl_2010_2025_halftime_games.csv"
 
 df = pd.read_csv(FILE)
 
-# Make sure booleans load correctly
 if df["trailing_team_home"].dtype != bool:
     df["trailing_team_home"] = (
-        df["trailing_team_home"]
-        .astype(str)
-        .str.lower()
-        .eq("true")
+        df["trailing_team_home"].astype(str).str.lower().eq("true")
     )
 
 if df["trailing_team_was_favorite"].dtype != bool:
     df["trailing_team_was_favorite"] = (
-        df["trailing_team_was_favorite"]
-        .astype(str)
-        .str.lower()
-        .eq("true")
+        df["trailing_team_was_favorite"].astype(str).str.lower().eq("true")
     )
 
 
@@ -42,54 +35,64 @@ def home():
     }
 
 
-@app.get("/probability")
-def probability(
-    min_deficit: int = Query(1, ge=1),
-    max_deficit: int = Query(100, ge=1),
-
-    favorite_only: bool = False,
-    min_favorite_by: float = 0,
-
-    location: str = "any",
-
-    start_season: int = 2010,
-    end_season: int = 2025,
+def apply_base_filters(
+    data,
+    min_deficit,
+    max_deficit,
+    start_season,
+    end_season,
 ):
-    filtered = df.copy()
+    filtered = data[
+        (data["season"] >= start_season)
+        & (data["season"] <= end_season)
+    ].copy()
 
-    # Season filter
-    filtered = filtered[
-        (filtered["season"] >= start_season)
-        & (filtered["season"] <= end_season)
-    ]
-
-    # Deficit filter
     filtered = filtered[
         (filtered["halftime_deficit"] >= min_deficit)
         & (filtered["halftime_deficit"] <= max_deficit)
     ]
 
-    # Favorite filters
+    return filtered
+
+
+def apply_location_filter(data, location):
+    if location.lower() == "home":
+        return data[data["trailing_team_home"] == True]
+
+    if location.lower() == "away":
+        return data[data["trailing_team_home"] == False]
+
+    return data
+
+
+@app.get("/probability")
+def probability(
+    min_deficit: int = Query(1, ge=1),
+    max_deficit: int = Query(100, ge=1),
+    favorite_only: bool = False,
+    min_favorite_by: float = 0,
+    location: str = "any",
+    start_season: int = 2010,
+    end_season: int = 2025,
+):
+    filtered = apply_base_filters(
+        df,
+        min_deficit,
+        max_deficit,
+        start_season,
+        end_season,
+    )
+
     if favorite_only:
         filtered = filtered[
             filtered["trailing_team_was_favorite"] == True
         ]
 
         filtered = filtered[
-            filtered["trailing_team_favorite_by"]
-            >= min_favorite_by
+            filtered["trailing_team_favorite_by"] >= min_favorite_by
         ]
 
-    # Home / away
-    if location.lower() == "home":
-        filtered = filtered[
-            filtered["trailing_team_home"] == True
-        ]
-
-    elif location.lower() == "away":
-        filtered = filtered[
-            filtered["trailing_team_home"] == False
-        ]
+    filtered = apply_location_filter(filtered, location)
 
     games = len(filtered)
 
@@ -99,111 +102,99 @@ def probability(
             "wins": 0,
             "losses": 0,
             "win_probability": None,
+            "win_percentage": None,
+            "average_deficit": None,
+            "average_favorite_by": None,
         }
 
     wins = int(filtered["trailing_team_won"].sum())
     losses = games - wins
-
-    probability = wins / games
+    win_probability = wins / games
 
     return {
         "games": games,
         "wins": wins,
         "losses": losses,
-
-        "win_probability": round(probability, 4),
-        "win_percentage": round(probability * 100, 1),
-
-        "average_deficit": round(
-            filtered["halftime_deficit"].mean(),
-            2
-        ),
-
+        "win_probability": round(win_probability, 4),
+        "win_percentage": round(win_probability * 100, 1),
+        "average_deficit": round(filtered["halftime_deficit"].mean(), 2),
         "average_favorite_by": round(
-            filtered[
-                "trailing_team_favorite_by"
-            ].mean(),
-            2
+            filtered["trailing_team_favorite_by"].mean(),
+            2,
         ),
     }
+
+
 @app.get("/comparison")
-def comparison():
+def comparison(
+    min_deficit: int = Query(1, ge=1),
+    max_deficit: int = Query(100, ge=1),
+    favorite_only: bool = False,
+    min_favorite_by: float = 0,
+    location: str = "any",
+    start_season: int = 2010,
+    end_season: int = 2025,
+):
     rows = []
 
     def add_row(label, data):
         games = len(data)
-
-        if games == 0:
-            win_percentage = None
-            wins = 0
-        else:
-            wins = int(data["trailing_team_won"].sum())
-            win_percentage = round(
-                wins / games * 100,
-                1
-            )
+        wins = int(data["trailing_team_won"].sum()) if games else 0
 
         rows.append(
             {
                 "label": label,
                 "games": games,
                 "wins": wins,
-                "win_percentage": win_percentage,
+                "win_percentage": (
+                    round(wins / games * 100, 1)
+                    if games
+                    else None
+                ),
             }
         )
 
-    # 1. Baseline
-    add_row(
-        "All teams trailing at halftime",
-        df
+    filtered = apply_base_filters(
+        df,
+        min_deficit,
+        max_deficit,
+        start_season,
+        end_season,
     )
 
-    # 2. Any pregame favorite
-    favorites = df[
-        df["trailing_team_was_favorite"] == True
-    ]
-
     add_row(
-        "Pregame favorites",
-        favorites
+        f"Trailing by {min_deficit}-{max_deficit} at halftime",
+        filtered,
     )
 
-    # 3. Favorite by 4+
-    favorite_4 = df[
-        (df["trailing_team_was_favorite"] == True)
-        & (df["trailing_team_favorite_by"] >= 4)
-    ]
+    if favorite_only:
+        favorites = filtered[
+            filtered["trailing_team_was_favorite"] == True
+        ]
 
-    add_row(
-        "Favored by 4+",
-        favorite_4
-    )
+        add_row("Pregame favorites", favorites)
 
-    # 4. Favorite by 4+, down 1-7
-    favorite_4_close = df[
-        (df["trailing_team_was_favorite"] == True)
-        & (df["trailing_team_favorite_by"] >= 4)
-        & (df["halftime_deficit"] >= 1)
-        & (df["halftime_deficit"] <= 7)
-    ]
+        strong_favorites = favorites[
+            favorites["trailing_team_favorite_by"] >= min_favorite_by
+        ]
 
-    add_row(
-        "Favored by 4+ and down 1-7",
-        favorite_4_close
-    )
+        add_row(
+            f"Favored by {min_favorite_by:g}+",
+            strong_favorites,
+        )
 
-    # 5. Away subset
-    favorite_4_close_away = df[
-        (df["trailing_team_was_favorite"] == True)
-        & (df["trailing_team_favorite_by"] >= 4)
-        & (df["halftime_deficit"] >= 1)
-        & (df["halftime_deficit"] <= 7)
-        & (df["trailing_team_home"] == False)
-    ]
+        final_data = strong_favorites
+    else:
+        final_data = filtered
 
-    add_row(
-        "Same situation, away",
-        favorite_4_close_away
-    )
+    if location.lower() in {"home", "away"}:
+        final_data = apply_location_filter(final_data, location)
+
+        add_row(
+            "Playing at home"
+            if location.lower() == "home"
+            else "Playing away",
+            final_data,
+        )
 
     return rows
