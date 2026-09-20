@@ -8,8 +8,8 @@ type ProbabilityResult = {
   losses: number;
   win_probability: number | null;
   win_percentage: number | null;
-  average_deficit?: number;
-  average_favorite_by?: number;
+  average_deficit?: number | null;
+  average_favorite_by?: number | null;
 };
 
 type ComparisonRow = {
@@ -46,7 +46,6 @@ export default function Home() {
 
   async function getProbability() {
     const params = buildParams();
-
     const response = await fetch(
       `http://127.0.0.1:8000/probability?${params.toString()}`
     );
@@ -55,13 +54,11 @@ export default function Home() {
       throw new Error("API request failed.");
     }
 
-    const data = await response.json();
-    setResult(data);
+    setResult(await response.json());
   }
 
   async function getComparison() {
     const params = buildParams();
-
     const response = await fetch(
       `http://127.0.0.1:8000/comparison?${params.toString()}`
     );
@@ -70,8 +67,7 @@ export default function Home() {
       throw new Error("Comparison request failed.");
     }
 
-    const data = await response.json();
-    setComparison(data);
+    setComparison(await response.json());
   }
 
   async function calculate() {
@@ -93,246 +89,402 @@ export default function Home() {
     calculate();
   }, []);
 
+  const winRate = result?.win_percentage ?? null;
+  const sampleStrength =
+    !result || result.games < 30
+      ? "Low sample"
+      : result.games < 100
+      ? "Moderate sample"
+      : "Strong sample";
+
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="mx-auto max-w-7xl px-6 py-12">
-        <div className="mb-10">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-            NFL Historical Analytics
-          </p>
+    <main className="min-h-screen bg-[#090b0f] text-[#f5f7fa]">
+      <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 lg:px-8">
+        <header className="mb-5 flex flex-col gap-4 border-b border-white/[0.07] pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.7)]" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                NFL Historical Analytics
+              </span>
+            </div>
 
-          <h1 className="text-4xl font-bold tracking-tight">
-            Sports Probability Screener
-          </h1>
+            <h1 className="text-2xl font-semibold tracking-[-0.03em] text-white sm:text-3xl">
+              Sports Probability Screener
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-sm leading-6 text-zinc-500">
+              Screen historical NFL halftime situations and see how each filter
+              changes the outcome profile.
+            </p>
+          </div>
 
-          <p className="mt-3 max-w-2xl text-zinc-400">
-            Analyze how NFL teams historically performed from similar halftime
-            situations.
-          </p>
-        </div>
+          <div className="flex items-center gap-2 self-start rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 sm:self-auto">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            2010–2025 dataset
+          </div>
+        </header>
 
-        <div className="grid gap-8 lg:grid-cols-[360px_1fr]">
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-            <h2 className="mb-6 text-xl font-semibold">Filters</h2>
-
-            <div className="space-y-6">
+        <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="h-fit rounded-2xl border border-white/[0.08] bg-[#101319] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.28)] xl:sticky xl:top-5">
+            <div className="mb-5 flex items-center justify-between">
               <div>
-                <label className="mb-2 block text-sm text-zinc-400">
-                  Minimum halftime deficit
-                </label>
-                <input
-                  type="number"
-                  value={minDeficit}
-                  min={1}
-                  onChange={(e) => setMinDeficit(Number(e.target.value))}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
-                />
+                <p className="text-sm font-semibold text-white">Scenario</p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Refine the historical sample
+                </p>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-400">
-                  Maximum halftime deficit
-                </label>
-                <input
-                  type="number"
-                  value={maxDeficit}
-                  min={1}
-                  onChange={(e) => setMaxDeficit(Number(e.target.value))}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
-                />
+              <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+                Filters
               </div>
+            </div>
 
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-zinc-400">
-                  Pregame favorites only
-                </label>
-                <input
-                  type="checkbox"
-                  checked={favoriteOnly}
-                  onChange={(e) => setFavoriteOnly(e.target.checked)}
-                  className="h-5 w-5"
-                />
-              </div>
+            <div className="space-y-5">
+              <FilterGroup label="Halftime deficit">
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField
+                    label="Min"
+                    value={minDeficit}
+                    min={1}
+                    onChange={setMinDeficit}
+                  />
+                  <NumberField
+                    label="Max"
+                    value={maxDeficit}
+                    min={1}
+                    onChange={setMaxDeficit}
+                  />
+                </div>
+              </FilterGroup>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-400">
-                  Minimum favorite by
-                </label>
-                <input
-                  type="number"
-                  value={minFavoriteBy}
-                  step={0.5}
-                  disabled={!favoriteOnly}
-                  onChange={(e) => setMinFavoriteBy(Number(e.target.value))}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 disabled:opacity-40"
-                />
-              </div>
+              <div className="h-px bg-white/[0.06]" />
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-400">
-                  Location
-                </label>
-                <select
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+              <FilterGroup label="Pregame favorite">
+                <button
+                  type="button"
+                  onClick={() => setFavoriteOnly(!favoriteOnly)}
+                  className="flex w-full items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-left transition hover:bg-white/[0.04]"
                 >
-                  <option value="any">Any</option>
-                  <option value="home">Home</option>
-                  <option value="away">Away</option>
-                </select>
-              </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-200">
+                      Favorites only
+                    </p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Restrict to teams favored before kickoff
+                    </p>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-2 block text-sm text-zinc-400">
-                    Start season
-                  </label>
-                  <input
-                    type="number"
+                  <span
+                    className={`relative h-6 w-11 rounded-full transition ${
+                      favoriteOnly ? "bg-emerald-400" : "bg-zinc-700"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${
+                        favoriteOnly ? "left-6" : "left-1"
+                      }`}
+                    />
+                  </span>
+                </button>
+
+                <div className="mt-2">
+                  <NumberField
+                    label="Minimum favorite by"
+                    value={minFavoriteBy}
+                    step={0.5}
+                    disabled={!favoriteOnly}
+                    suffix="pts"
+                    onChange={setMinFavoriteBy}
+                  />
+                </div>
+              </FilterGroup>
+
+              <div className="h-px bg-white/[0.06]" />
+
+              <FilterGroup label="Location">
+                <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.08] bg-black/20 p-1">
+                  {[
+                    ["any", "Any"],
+                    ["home", "Home"],
+                    ["away", "Away"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setLocation(value)}
+                      className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                        location === value
+                          ? "bg-white text-black shadow-sm"
+                          : "text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </FilterGroup>
+
+              <div className="h-px bg-white/[0.06]" />
+
+              <FilterGroup label="Season range">
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField
+                    label="From"
                     value={startSeason}
-                    onChange={(e) => setStartSeason(Number(e.target.value))}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+                    onChange={setStartSeason}
                   />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-zinc-400">
-                    End season
-                  </label>
-                  <input
-                    type="number"
+                  <NumberField
+                    label="To"
                     value={endSeason}
-                    onChange={(e) => setEndSeason(Number(e.target.value))}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+                    onChange={setEndSeason}
                   />
                 </div>
-              </div>
+              </FilterGroup>
 
               <button
                 onClick={calculate}
                 disabled={loading}
-                className="w-full rounded-lg bg-white px-4 py-3 font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-50"
+                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "Calculating..." : "Calculate Probability"}
+                {loading ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+                    Recalculating
+                  </>
+                ) : (
+                  <>
+                    Run analysis
+                    <span className="transition-transform group-hover:translate-x-0.5">
+                      →
+                    </span>
+                  </>
+                )}
               </button>
             </div>
-          </section>
+          </aside>
 
-          <section>
+          <section className="min-w-0">
             {error && (
-              <div className="mb-6 rounded-xl border border-red-900 bg-red-950/40 p-4 text-red-300">
+              <div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-3 text-sm text-red-300">
                 {error}
               </div>
             )}
 
             {result && (
               <>
-                <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-8">
-                  <p className="text-sm uppercase tracking-wider text-zinc-500">
-                    Historical win probability
-                  </p>
+                <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#101319] shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+                  <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
+                    <div className="p-6 sm:p-8">
+                      <div className="mb-10 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-emerald-400/20 bg-emerald-400/[0.07] px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+                          HISTORICAL RESULT
+                        </span>
+                        <span className="rounded-full border border-white/[0.08] px-2.5 py-1 text-[11px] font-medium text-zinc-500">
+                          {sampleStrength}
+                        </span>
+                      </div>
 
-                  <div className="mt-3 flex items-end gap-3">
-                    <span className="text-7xl font-bold tracking-tight">
-                      {result.win_percentage !== null
-                        ? `${result.win_percentage}%`
-                        : "—"}
-                    </span>
+                      <p className="text-sm font-medium text-zinc-500">
+                        Win probability
+                      </p>
 
-                    <span className="mb-2 text-zinc-500">
-                      from {result.games.toLocaleString()} games
-                    </span>
+                      <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+                        <span className="text-[72px] font-semibold leading-none tracking-[-0.07em] text-white sm:text-[92px]">
+                          {winRate !== null ? winRate : "—"}
+                          <span className="ml-1 text-[0.38em] tracking-[-0.03em] text-zinc-500">
+                            %
+                          </span>
+                        </span>
+
+                        <div className="mb-2">
+                          <p className="text-sm font-medium text-zinc-300">
+                            {result.wins.toLocaleString()} wins
+                          </p>
+                          <p className="mt-0.5 text-xs text-zinc-500">
+                            across {result.games.toLocaleString()} comparable games
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="mt-6 max-w-2xl text-sm leading-6 text-zinc-500">
+                        Historical frequency for teams matching the selected
+                        halftime, spread, location, and season filters.
+                      </p>
+                    </div>
+
+                    <div className="border-t border-white/[0.07] bg-black/10 p-6 lg:border-l lg:border-t-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-600">
+                        Active scenario
+                      </p>
+
+                      <div className="mt-5 space-y-4">
+                        <ScenarioRow
+                          label="Halftime deficit"
+                          value={`${minDeficit}–${maxDeficit} pts`}
+                        />
+                        <ScenarioRow
+                          label="Pregame favorite"
+                          value={
+                            favoriteOnly
+                              ? `Yes, by ${minFavoriteBy}+ pts`
+                              : "Any"
+                          }
+                        />
+                        <ScenarioRow
+                          label="Location"
+                          value={
+                            location === "any"
+                              ? "Any"
+                              : location === "home"
+                              ? "Home"
+                              : "Away"
+                          }
+                        />
+                        <ScenarioRow
+                          label="Seasons"
+                          value={`${startSeason}–${endSeason}`}
+                        />
+                      </div>
+                    </div>
                   </div>
-
-                  <p className="mt-5 text-sm text-zinc-500">
-                    Historical performance does not guarantee future results.
-                  </p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3">
-                  <StatCard
-                    title="Comparable Games"
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard
+                    label="Comparable games"
                     value={result.games.toLocaleString()}
+                    subtext="Historical sample"
                   />
-                  <StatCard
-                    title="Comeback Wins"
+                  <MetricCard
+                    label="Comeback wins"
                     value={result.wins.toLocaleString()}
+                    subtext="Games won after trailing"
                   />
-                  <StatCard
-                    title="Losses"
-                    value={result.losses.toLocaleString()}
-                  />
-                </div>
-
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <StatCard
-                    title="Average Deficit"
+                  <MetricCard
+                    label="Avg. deficit"
                     value={
+                      result.average_deficit !== null &&
                       result.average_deficit !== undefined
                         ? `${result.average_deficit} pts`
                         : "—"
                     }
+                    subtext="Within selected sample"
                   />
-                  <StatCard
-                    title="Average Favorite By"
+                  <MetricCard
+                    label="Avg. favorite by"
                     value={
+                      result.average_favorite_by !== null &&
                       result.average_favorite_by !== undefined
                         ? `${result.average_favorite_by} pts`
                         : "—"
                     }
+                    subtext="Pregame spread"
                   />
                 </div>
 
-                <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-                  <div className="mb-6">
-                    <h2 className="text-xl font-semibold">Filter Impact</h2>
-                    <p className="mt-1 text-sm text-zinc-500">
-                      See how historical win probability changes as filters are
-                      added.
+                <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#101319] p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)] sm:p-6">
+                  <div className="flex flex-col gap-2 border-b border-white/[0.06] pb-5 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-white">
+                        Filter impact
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        How the historical win rate changes as conditions narrow.
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-zinc-600">
+                      Each step uses the remaining sample
                     </p>
                   </div>
 
-                  <div className="space-y-4">
-                    {comparison.map((row, index) => (
-                      <div
-                        key={row.label}
-                        className="rounded-xl border border-zinc-800 bg-zinc-950 p-5"
-                      >
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="font-medium">
-                              {index + 1}. {row.label}
+                  <div className="mt-2 divide-y divide-white/[0.06]">
+                    {comparison.map((row, index) => {
+                      const previous =
+                        index > 0 ? comparison[index - 1].win_percentage : null;
+                      const delta =
+                        row.win_percentage !== null && previous !== null
+                          ? row.win_percentage - previous
+                          : null;
+
+                      return (
+                        <div
+                          key={row.label}
+                          className="grid gap-4 py-5 sm:grid-cols-[36px_minmax(0,1fr)_100px_100px] sm:items-center"
+                        >
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-xs font-semibold text-zinc-500">
+                            {String(index + 1).padStart(2, "0")}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="truncate text-sm font-medium text-zinc-200">
+                                {row.label}
+                              </p>
+                              <span className="text-xs text-zinc-600 sm:hidden">
+                                {row.games.toLocaleString()} games
+                              </span>
+                            </div>
+
+                            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                              <div
+                                className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                                style={{
+                                  width: `${Math.min(
+                                    row.win_percentage ?? 0,
+                                    100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="hidden text-right sm:block">
+                            <p className="text-sm font-medium text-zinc-300">
+                              {row.games.toLocaleString()}
                             </p>
-                            <p className="mt-1 text-sm text-zinc-500">
-                              {row.games.toLocaleString()} games
+                            <p className="mt-0.5 text-[11px] text-zinc-600">
+                              games
                             </p>
                           </div>
 
-                          <div className="text-right">
-                            <p className="text-3xl font-bold">
-                              {row.win_percentage !== null
-                                ? `${row.win_percentage}%`
-                                : "—"}
-                            </p>
-                            <p className="text-sm text-zinc-500">
-                              {row.wins} wins
-                            </p>
+                          <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                            <div>
+                              <span className="text-2xl font-semibold tracking-[-0.03em] text-white">
+                                {row.win_percentage !== null
+                                  ? `${row.win_percentage}%`
+                                  : "—"}
+                              </span>
+                              <span className="ml-2 text-xs text-zinc-600 sm:hidden">
+                                {row.wins} wins
+                              </span>
+                            </div>
+
+                            {delta !== null && (
+                              <p
+                                className={`mt-0.5 text-[11px] font-medium ${
+                                  delta > 0
+                                    ? "text-emerald-400"
+                                    : delta < 0
+                                    ? "text-red-400"
+                                    : "text-zinc-600"
+                                }`}
+                              >
+                                {delta > 0 ? "+" : ""}
+                                {delta.toFixed(1)} pts
+                              </p>
+                            )}
                           </div>
                         </div>
-
-                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-800">
-                          <div
-                            className="h-full rounded-full bg-white"
-                            style={{
-                              width: `${row.win_percentage ?? 0}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
+
+                <p className="mt-4 px-1 text-xs leading-5 text-zinc-700">
+                  Historical results are descriptive, not predictive. Small
+                  samples can produce unstable percentages.
+                </p>
               </>
             )}
           </section>
@@ -342,17 +494,91 @@ export default function Home() {
   );
 }
 
-function StatCard({
-  title,
-  value,
+function FilterGroup({
+  label,
+  children,
 }: {
-  title: string;
-  value: string;
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-      <p className="text-sm text-zinc-500">{title}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    <div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  min,
+  step,
+  suffix,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  step?: number;
+  suffix?: string;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label
+      className={`block rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 transition focus-within:border-white/[0.18] ${
+        disabled ? "opacity-40" : ""
+      }`}
+    >
+      <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600">
+        {label}
+      </span>
+
+      <div className="mt-1 flex items-center gap-2">
+        <input
+          type="number"
+          value={value}
+          min={min}
+          step={step}
+          disabled={disabled}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-200 outline-none disabled:cursor-not-allowed"
+        />
+        {suffix && <span className="text-xs text-zinc-600">{suffix}</span>}
+      </div>
+    </label>
+  );
+}
+
+function ScenarioRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-xs text-zinc-600">{label}</span>
+      <span className="text-right text-xs font-medium text-zinc-300">{value}</span>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  subtext,
+}: {
+  label: string;
+  value: string;
+  subtext: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/[0.08] bg-[#101319] p-5">
+      <p className="text-xs font-medium text-zinc-600">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-white">
+        {value}
+      </p>
+      <p className="mt-1 text-[11px] text-zinc-700">{subtext}</p>
     </div>
   );
 }
