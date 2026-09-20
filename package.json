@@ -1,0 +1,7 @@
+{
+  "name": "sports-probability-screener",
+  "private": true,
+  "scripts": {
+    "dev": "bash start-dev.sh"
+  }
+}
